@@ -1,0 +1,6 @@
+p_colombia/ 
+__pycache__/ 
+*.pyc 
+*.pkl 
+*.csv 
+*.parquet 
