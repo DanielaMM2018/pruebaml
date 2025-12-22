@@ -240,9 +240,9 @@ with tempfile.TemporaryDirectory() as tmpdir:
     )
 
     metrics_ui_s3_uri = session.upload_data(
-    path=str(ui_metrics_path),
-    bucket=BUCKET,
-    key_prefix=f"{METRICS_S3_PREFIX}/ui"
+        path=str(ui_metrics_path),
+        bucket=BUCKET,
+        key_prefix=METRICS_S3_PREFIX
     )
 
     report_s3_uri = session.upload_data(
@@ -264,7 +264,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 MODEL_PACKAGE_GROUP = "xgboost-ordinal-tecnologia"
 
 model_metrics = ModelMetrics(
-    model_statistics=MetricsSource(
+    model_quality=MetricsSource(
         s3_uri=metrics_ui_s3_uri,
         content_type="application/json"
     )
