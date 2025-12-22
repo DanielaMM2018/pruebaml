@@ -3,6 +3,7 @@
 # ==========================================
 
 import pandas as pd
+import numpy as np
 import awswrangler as wr
 
 print("pandas:", pd.__version__)
