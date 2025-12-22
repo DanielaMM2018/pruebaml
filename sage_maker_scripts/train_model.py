@@ -160,6 +160,19 @@ metrics_payload = {
     "labels": labels
 }
 
+ui_metrics_payload = {
+    "classification_metrics": {
+        "accuracy": {
+            "value": float(accuracy)
+        },
+        "weighted_f1": {
+            "value": float(
+                clf_report["weighted avg"]["f1-score"]
+            )
+        }
+    }
+}
+
 
 # -------------------------------------------------
 # SAVE ARTIFACTS LOCALLY (TEMP)
@@ -173,6 +186,11 @@ with tempfile.TemporaryDirectory() as tmpdir:
     metrics_path = tmpdir / "metrics.json"
     with open(metrics_path, "w") as f:
         json.dump(metrics_payload, f, indent=4)
+
+    ui_metrics_path = tmpdir / "metrics_ui.json"
+    with open(ui_metrics_path, "w") as f:
+        json.dump(ui_metrics_payload, f, indent=4)
+
 
     report_path = tmpdir / "classification_report.json"
     with open(report_path, "w") as f:
@@ -221,6 +239,12 @@ with tempfile.TemporaryDirectory() as tmpdir:
         key_prefix=METRICS_S3_PREFIX
     )
 
+    metrics_ui_s3_uri = session.upload_data(
+    path=str(ui_metrics_path),
+    bucket=BUCKET,
+    key_prefix=f"{METRICS_S3_PREFIX}/ui"
+    )
+
     report_s3_uri = session.upload_data(
         path=str(report_path),
         bucket=BUCKET,
@@ -241,7 +265,7 @@ MODEL_PACKAGE_GROUP = "xgboost-ordinal-tecnologia"
 
 model_metrics = ModelMetrics(
     model_statistics=MetricsSource(
-        s3_uri=metrics_s3_uri,
+        s3_uri=metrics_ui_s3_uri,
         content_type="application/json"
     )
 )
