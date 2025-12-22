@@ -264,7 +264,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 MODEL_PACKAGE_GROUP = "xgboost-ordinal-tecnologia"
 
 model_metrics = ModelMetrics(
-    model_quality=MetricsSource(
+    model_statistics=MetricsSource(
         s3_uri=metrics_ui_s3_uri,
         content_type="application/json"
     )
