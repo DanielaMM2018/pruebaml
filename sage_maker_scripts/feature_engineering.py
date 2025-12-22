@@ -26,6 +26,9 @@ df_tx = wr.s3.read_csv(S3_TX_PATH)
 df_cust = wr.s3.read_csv(S3_CUSTOMERS_PATH)
 
 df_tx["fecha"] = pd.to_datetime(df_tx["fecha"], errors="coerce")
+df_cust["fecha_nacimiento"] = pd.to_datetime(
+    df_cust["fecha_nacimiento"], errors="coerce"
+)
 
 # ------------------------------------------
 # REFERENCE DATE
@@ -33,165 +36,145 @@ df_tx["fecha"] = pd.to_datetime(df_tx["fecha"], errors="coerce")
 ref_date = df_tx["fecha"].max()
 
 # ------------------------------------------
-# LIMPIEZA CATEGORÍAS
+# BASE FEATURES (GLOBAL)
 # ------------------------------------------
-category_map = {
-    "COMIDAS": "COMIDA",
-    "DEPORTE": "DEPORTE",
-    "DEPORTES": "DEPORTE",
-    "LICORES Y CIGARRILLOS": "LICORES",
-    "SALUD Y BELLEZA": "SALUD_BELLEZA"
-}
-
-df_tx["categoria"] = df_tx["categoria"].replace(category_map)
-
-# ------------------------------------------
-# CONTROL DE CALIDAD
-# ------------------------------------------
-df_tx["tx_negativa"] = (
-    (df_tx["tipo_transaccion"] == "Sale") &
-    ((df_tx["valor_transaccion"] < 0) | (df_tx["puntos"] < 0))
-)
-
-# ------------------------------------------
-# FUNCIONES
-# ------------------------------------------
-def features_por_ventana(df, meses):
-    fecha_min = ref_date - pd.DateOffset(months=meses)
-    df_w = df[df["fecha"] >= fecha_min]
-
-    return df_w.groupby("id_cliente").agg(
-        **{
-            f"num_tx_{meses}m": ("id_transaccion", "count"),
-            f"gasto_{meses}m": ("valor_transaccion", "sum"),
-            f"puntos_ganados_{meses}m": ("puntos", lambda x: x[x > 0].sum()),
-            f"puntos_redimidos_{meses}m": ("puntos", lambda x: -x[x < 0].sum())
-        }
-    )
-
-def avg_monthly_tech_spend(df, meses):
-    fecha_min = ref_date - pd.DateOffset(months=meses)
-
-    df_w = df[
-        (df["fecha"] >= fecha_min) &
-        (df["categoria"] == "TECNOLOGIA")
-    ].copy()
-
-    df_w["valor_transaccion"] = pd.to_numeric(
-        df_w["valor_transaccion"], errors="coerce"
-    )
-
-    return (
-        df_w.groupby("id_cliente", as_index=False)["valor_transaccion"]
-        .sum()
-        .assign(**{
-            f"avg_gasto_tecnologia_{meses}m":
-                lambda x: x["valor_transaccion"] / meses
-        })
-        .drop(columns="valor_transaccion")
-    )
-
-
-# ------------------------------------------
-# FEATURES GENERALES
-# ------------------------------------------
-user_base = df_tx.groupby("id_cliente").agg(
+base = df_tx.groupby("id_cliente").agg(
     num_tx_total=("id_transaccion", "count"),
     total_gasto=("valor_transaccion", "sum"),
-    puntos_ganados_total=("puntos", lambda x: x[x > 0].sum()),
-    puntos_redimidos_total=("puntos", lambda x: -x[x < 0].sum()),
     recencia_dias=("fecha", lambda x: (ref_date - x.max()).days),
-    num_tx_negativas=("tx_negativa", "sum")
-)
+).reset_index()
+
+base["log_num_tx_total"] = np.log10(base["num_tx_total"] + 1)
+base["log_total_gasto"] = np.log10(base["total_gasto"] + 1)
 
 # ------------------------------------------
-# FEATURES TEMPORALES
+# FUNCTION: WINDOW FEATURES
 # ------------------------------------------
-for m in [1, 3, 6, 12]:
-    user_base = user_base.merge(
-        features_por_ventana(df_tx, m),
-        on="id_cliente",
-        how="left"
-    )
+def window_features(df, months):
+    fmin = ref_date - pd.DateOffset(months=months)
+    d = df[df["fecha"] >= fmin]
+
+    return d.groupby("id_cliente").agg(
+        **{
+            f"num_tx_{months}m": ("id_transaccion", "count"),
+            f"gasto_{months}m": ("valor_transaccion", "sum"),
+            f"puntos_ganados_{months}m": (
+                "puntos", lambda x: x[x > 0].sum()
+            ),
+            f"puntos_redimidos_{months}m": (
+                "puntos", lambda x: -x[x < 0].sum()
+            ),
+        }
+    ).reset_index()
 
 # ------------------------------------------
-# FEATURES POR CATEGORÍA (12m)
+# TEMPORAL FEATURES
+# ------------------------------------------
+tx_1m = window_features(df_tx, 1)
+tx_3m = window_features(df_tx, 3)
+tx_6m = window_features(df_tx, 6)
+
+# ------------------------------------------
+# TECNOLOGÍA 12M
 # ------------------------------------------
 df_12m = df_tx[df_tx["fecha"] >= ref_date - pd.DateOffset(months=12)]
 
-cat_pivot = df_12m.pivot_table(
-    index="id_cliente",
-    columns="categoria",
-    values="valor_transaccion",
-    aggfunc="sum",
-    fill_value=0
+tech_12m = (
+    df_12m[df_12m["categoria"] == "TECNOLOGIA"]
+    .groupby("id_cliente")["valor_transaccion"]
+    .sum()
+    .reset_index(name="gasto_TECNOLOGIA_12m")
 )
 
-cat_pivot.columns = [f"gasto_{c}_12m" for c in cat_pivot.columns]
-
-cat_pivot["pct_tecnologia_12m"] = (
-    cat_pivot.get("gasto_TECNOLOGIA_12m", 0) /
-    (cat_pivot.sum(axis=1) + 1)
+total_12m = (
+    df_12m.groupby("id_cliente")["valor_transaccion"]
+    .sum()
+    .reset_index(name="gasto_total_12m")
 )
 
-cat_pivot["compra_tecnologia"] = (
-    cat_pivot.get("gasto_TECNOLOGIA_12m", 0) > 0
+tech_12m = tech_12m.merge(total_12m, on="id_cliente", how="right").fillna(0)
+
+tech_12m["pct_tecnologia_12m"] = (
+    tech_12m["gasto_TECNOLOGIA_12m"] /
+    (tech_12m["gasto_total_12m"] + 1)
+)
+
+tech_12m["compra_tecnologia"] = (
+    tech_12m["gasto_TECNOLOGIA_12m"] > 0
 ).astype(int)
 
-# ------------------------------------------
-# PROMEDIOS TECNOLOGÍA
-# ------------------------------------------
-avg_tech = (
-    avg_monthly_tech_spend(df_tx, 3)
-    .merge(avg_monthly_tech_spend(df_tx, 6), on="id_cliente", how="outer")
-    .merge(avg_monthly_tech_spend(df_tx, 12), on="id_cliente", how="outer")
-)
+tech_12m = tech_12m[
+    ["id_cliente", "gasto_TECNOLOGIA_12m",
+     "pct_tecnologia_12m", "compra_tecnologia"]
+]
 
 # ------------------------------------------
-# MERGE FINAL
+# AVG TECNOLOGÍA
 # ------------------------------------------
-df_users = (
-    df_cust
-    .merge(user_base, on="id_cliente", how="left")
-    .merge(cat_pivot, on="id_cliente", how="left")
-    .merge(avg_tech, on="id_cliente", how="left")
-)
+def avg_tech(df, months):
+    fmin = ref_date - pd.DateOffset(months=months)
+    d = df[
+        (df["fecha"] >= fmin) &
+        (df["categoria"] == "TECNOLOGIA")
+    ]
+
+    return (
+        d.groupby("id_cliente")["valor_transaccion"]
+        .sum()
+        .reset_index(name=f"avg_gasto_tecnologia_{months}m")
+        .assign(**{
+            f"avg_gasto_tecnologia_{months}m":
+                lambda x: x[f"avg_gasto_tecnologia_{months}m"] / months
+        })
+    )
+
+avg_tech_3m = avg_tech(df_tx, 3)
+avg_tech_6m = avg_tech(df_tx, 6)
 
 # ------------------------------------------
-# EDAD
+# CUSTOMER FEATURES
 # ------------------------------------------
-df_users["fecha_nacimiento"] = pd.to_datetime(
-    df_users["fecha_nacimiento"], errors="coerce"
+cust = df_cust[
+    ["id_cliente", "estrato_social", "saldo_puntos", "fecha_nacimiento"]
+].copy()
+
+
+cust["fecha_nacimiento"] = pd.to_datetime(
+    cust["fecha_nacimiento"], errors="coerce"
 )
 
-df_users["edad"] = (
-    ref_date - df_users["fecha_nacimiento"]
+cust["edad"] = (
+    ref_date - cust["fecha_nacimiento"]
 ).dt.days // 365
 
-# ------------------------------------------
-# LOG TRANSFORMS
-# ------------------------------------------
-df_users["log_num_tx_total"] = np.log10(df_users["num_tx_total"] + 1)
-df_users["log_total_gasto"] = np.log10(df_users["total_gasto"] + 1)
-df_users["log_puntos_ganados"] = np.log10(df_users["puntos_ganados_total"] + 1)
-
+cust = cust.drop(columns="fecha_nacimiento")
 
 # ------------------------------------------
-# FILL NA
+# FINAL MERGE
 # ------------------------------------------
-df_users.fillna(0, inplace=True)
+df = (
+    cust
+    .merge(base, on="id_cliente", how="left")
+    .merge(tx_1m[["id_cliente", "num_tx_1m", "gasto_1m", "puntos_ganados_1m"]],
+           on="id_cliente", how="left")
+    .merge(tx_3m[["id_cliente", "puntos_redimidos_3m"]],
+           on="id_cliente", how="left")
+    .merge(tx_6m[["id_cliente", "puntos_redimidos_6m"]],
+           on="id_cliente", how="left")
+    .merge(tech_12m, on="id_cliente", how="left")
+    .merge(avg_tech_3m, on="id_cliente", how="left")
+    .merge(avg_tech_6m, on="id_cliente", how="left")
+)
+
+df.fillna(0, inplace=True)
 
 # ------------------------------------------
-# REDONDEO NUMÉRICO (EVITA ERRORES EN EXCEL)
-# ------------------------------------------
-num_cols = df_users.select_dtypes(include=["float64", "float32"]).columns
-df_users[num_cols] = df_users[num_cols].round(2)
-
-# ------------------------------------------
-# SAVE
+# SAVE TO S3
 # ------------------------------------------
 wr.s3.to_csv(
-    df,  # tu DataFrame
+    df=df,
     path=S3_FEATURES,
     index=False
 )
+
+print("Features guardadas en:", S3_FEATURES)
