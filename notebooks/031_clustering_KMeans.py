@@ -58,5 +58,5 @@ kmeans = KMeans(
 labels_kmeans = kmeans.fit_predict(X_scaled)
 
 metrics.save_metrics(labels_kmeans)
-
+print(metrics.evaluate(labels_kmeans))
 
