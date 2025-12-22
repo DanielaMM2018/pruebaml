@@ -1,0 +1,84 @@
+Top 2 ciudades con mayor número de usuarios
+CREATE TABLE top_2_ciudades_usuarios
+WITH (
+    format = 'PARQUET',
+    write_compression = 'SNAPPY'
+) AS
+SELECT ciudad, total_usuarios
+FROM (
+    SELECT
+        ciudad,
+        COUNT(DISTINCT id_cliente) AS total_usuarios
+    FROM raw_customers
+    GROUP BY ciudad
+    ORDER BY total_usuarios DESC
+    LIMIT 2
+)
+
+
+
+Top 10 clientes con mayor consumo en la categoría “SALUD Y BELLEZA”
+SELECT 
+        id_cliente,
+        SUM(valor_transaccion) AS total_consumo
+    FROM raw_transacciones
+    WHERE categoria = 'SALUD Y BELLEZA'
+    GROUP BY id_cliente
+    ORDER BY total_consumo DESC
+    LIMIT 10
+
+
+
+
+
+Top 10 clientes con mayor acumulación y mayor redención de puntos
+SELECT 
+        id_cliente,
+        sum(puntos) as total_puntos
+FROM raw_transacciones
+WHERE tipo_transaccion = 'Redemption'
+GROUP BY id_cliente
+ORDER BY total_puntos DESC
+LIMIT 10
+
+SELECT 
+        id_cliente,
+        saldo_puntos
+FROM raw_customers
+ORDER BY saldo_puntos DESC
+LIMIT 10
+
+SELECT 
+    t.id_cliente,
+    t.total_puntos,
+    c.saldo_puntos
+FROM 
+    (SELECT 
+        id_cliente,
+        sum(puntos) as total_puntos
+    FROM raw_transacciones
+    WHERE tipo_transaccion = 'Redemption'
+    GROUP BY id_cliente
+    ORDER BY total_puntos DESC) t 
+    INNER JOIN 
+    (SELECT 
+        id_cliente,
+        saldo_puntos
+    FROM raw_customers
+    ORDER BY saldo_puntos DESC) c
+    ON t.id_cliente = c.id_cliente
+    ORDER BY c.saldo_puntos DESC, t.total_puntos DESC
+    LIMIT 10
+
+
+
+
+Acumulaciones y redenciones totales por mes
+
+SELECT
+    date_format(CAST(fecha AS timestamp), '%Y-%m') AS mes,
+    SUM(CASE WHEN tipo_transaccion = 'Sale' THEN puntos ELSE 0 END) AS total_acumulacion,
+    SUM(CASE WHEN tipo_transaccion = 'Redemption' THEN puntos ELSE 0 END) AS total_redencion
+FROM raw_transacciones
+GROUP BY date_format(CAST(fecha AS timestamp), '%Y-%m')
+ORDER BY mes;
