@@ -1,0 +1,12 @@
+{
+    "accuracy": 0.9180327868852459,
+    "num_train_samples": 183,
+    "num_test_samples": 61,
+    "target_type": "ordinal_multiclass",
+    "labels": [
+        "sin_compra",
+        "baja",
+        "media",
+        "alta"
+    ]
+}
