@@ -31,3 +31,37 @@ Descripción de los archivos y carpetas más relevantes del proyecto.
 ## Notas
 
 - Los artefactos (CSVs, PNGs) se guardan en `results/` para mantener reproducibilidad.
+
+---
+
+## Documentación & Guías 📚
+
+- `notebooks/FEATURE.MD` - Guía detallada de la ingeniería de features: transformaciones, selección, variables finales y recomendaciones para escalado y reducción de dimensionalidad.
+- `notebooks/SUPERVISED.MD` - Documentación del modelado supervisado (objetivo ordinal para categoría TECNOLOGÍA), algoritmos evaluados y métricas de evaluación.
+- `notebooks/CLUSTERING.MD` - Reporte de los experimentos de clustering (K-Means, Birch, Agglomerative), selección de K y perfiles resultantes.
+- `sage_maker_scripts/SAGEMAKER.MD` - Diseño y flujo para entrenamiento y registro en SageMaker, estructura de artefactos en S3 y pasos de despliegue.
+
+---
+
+## Revisión general del proyecto ✅
+
+**Alcance:** Construcción de un pipeline reproducible para generación de features, segmentación (clustering) y modelado ordinal de la intensidad de compra en la categoría *TECNOLOGÍA*.
+
+**Fortalezas:**
+- Pipeline modular y reproducible; artefactos bien organizados (`results/`, `artifacts/`, `models/`).
+- Documentación técnica en múltiples MDs que facilitan replicación y revisión.
+- Enfoque técnico sólido: features temporales, tratamiento de outliers y objetivo ordinal apropiado.
+
+**Áreas de mejora / próximos pasos:**
+- Añadir tests automáticos (unitarios para transformaciones, integraciones para pipelines).
+- Automatizar ejecución (Makefile / CI) para reproducibilidad continua.
+- Incluir ejemplos de uso y notebooks de inferencia/serving.
+- Registrar más claramente los contratos de entrada/salida de cada script (schemas de CSV).
+
+**Cómo empezar a contribuir:**
+1. Instalar dependencias: `pip install -r requirements.txt`.
+2. Reproducir feature engineering: `python notebooks/021_feature_engineering.py`.
+3. Ejecutar modelos: `python notebooks/042_supervised_xgboost_ordinal.py` y notebooks de clustering en `03x`.
+4. Abrir los MDs mencionados para entender decisiones y parámetros.
+
+
